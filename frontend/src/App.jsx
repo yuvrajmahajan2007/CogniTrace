@@ -39,14 +39,22 @@ const PAGE_META = {
 function AppShell() {
   const location = useLocation();
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [healthError, setHealthError] = useState('');
 
   const verifyHealth = useCallback(async () => {
     setBackendStatus('checking');
+    setHealthError('');
     try {
       const data = await checkHealth();
-      setBackendStatus(data?.status === 'ok' ? 'connected' : 'unreachable');
-    } catch {
+      if (data?.status === 'ok') {
+        setBackendStatus('connected');
+      } else {
+        setBackendStatus('unreachable');
+        setHealthError('Unexpected health response');
+      }
+    } catch (err) {
       setBackendStatus('unreachable');
+      setHealthError(err?.message || 'Network or CORS error');
     }
   }, []);
 
@@ -66,6 +74,7 @@ function AppShell() {
       title={meta.title}
       subtitle={meta.subtitle}
       backendStatus={backendStatus}
+      healthError={healthError}
       onRetryHealth={verifyHealth}
     >
       <Routes>
