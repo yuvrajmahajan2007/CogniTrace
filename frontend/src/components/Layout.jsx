@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Menu, RefreshCw } from 'lucide-react';
 import Sidebar from './Sidebar';
 import StatusBadge from './StatusBadge';
+import { API_BASE_URL } from '../api/client';
 
 export default function Layout({
   title,
   subtitle,
   backendStatus,
+  healthError,
   onRetryHealth,
   children,
 }) {
@@ -68,10 +70,10 @@ export default function Layout({
             <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs text-rose-800">
               <span>
                 Unable to reach the CogniTrace backend at{' '}
-                <code className="font-mono bg-rose-100 px-1 py-0.5 rounded">
-                  http://127.0.0.1:8000
+                <code className="font-mono bg-rose-100 px-1 py-0.5 rounded break-all">
+                  {API_BASE_URL || 'configured backend API (http://127.0.0.1:8000)'}
                 </code>
-                . Ensure the FastAPI server is running.
+                .{healthError ? ` Reason: ${healthError}.` : ' Ensure the backend server is running and accessible.'}
               </span>
               {onRetryHealth && (
                 <button
