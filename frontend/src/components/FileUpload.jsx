@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiUrl } from '../api/client';
 
 function FileUpload({ onUploadComplete }) {
   const [files, setFiles] = useState([]);
@@ -22,7 +23,7 @@ function FileUpload({ onUploadComplete }) {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
     try {
-      const res = await fetch('/api/files/upload', {
+      const res = await fetch(apiUrl('/api/files/upload'), {
         method: 'POST',
         body: formData,
       });
