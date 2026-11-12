@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Modal from './Modal';
+import { apiUrl } from '../api/client';
 
 function FileList({ refresh }) {
   const [files, setFiles] = useState([]);
@@ -10,7 +11,7 @@ function FileList({ refresh }) {
 
   const fetchFiles = async () => {
     try {
-      const res = await fetch('/api/files');
+      const res = await fetch(apiUrl('/api/files'));
       const data = await res.json();
       setFiles(data);
     } catch (e) {
@@ -26,7 +27,7 @@ function FileList({ refresh }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/files/${file.id}/content`);
+      const res = await fetch(apiUrl(`/api/files/${file.id}/content`));
       if (!res.ok) throw new Error('Unable to fetch content');
       const data = await res.json();
       setContent(data);
@@ -41,7 +42,7 @@ function FileList({ refresh }) {
   const deleteFile = async (fileId) => {
     if (!window.confirm('Delete this file?')) return;
     try {
-      const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/files/${fileId}`), { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       // refresh list
       fetchFiles();
