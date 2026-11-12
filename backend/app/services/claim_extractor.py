@@ -166,23 +166,142 @@ def _is_insufficient_evidence(segment: str) -> bool:
     return False
 
 
-def _topic_tokens(text: str) -> Set[str]:
-    words = re.findall(r"[a-zA-Z0-9_-]{3,}", text.lower())
-    return {w for w in words if w not in STOPWORDS}
+EXTENDED_STOPWORDS: Set[str] = STOPWORDS | {
+    "git", "commit", "author", "date", "time", "timestamp", "files", "changed", "line",
+    "page", "chat", "task", "row", "speaker", "id", "status", "message", "excerpt",
+    "path", "json", "csv", "txt", "pdf", "docx", "example", "com", "org", "http", "https",
+    "url", "code", "app", "backend", "frontend", "py", "js", "ts", "staging",
+    "production", "prod", "dev", "local", "release", "repo", "branch",
+    "rule", "rules", "strictly", "constrained", "producing", "lacks", "applying", "generic",
+    "dangerous", "introduces", "invents", "facts", "leaks", "confidential", "credentials",
+    "boundaries", "discrepancies", "discrepancy", "isolated", "prominent", "warning",
+    "uncertainty", "matrix", "conflict", "conflicts", "state", "states", "notes", "personal",
+    "item", "items", "step", "steps", "details", "summary", "assignee", "priority", "due",
+    "before", "after", "between", "sources", "source", "material", "reference", "link",
+    "statement", "statements", "indicates", "different", "when", "slack", "github",
+    "standard", "rag", "models", "generate", "ambiguous", "synthesis", "invent", "false",
+    "most", "challenging", "technical", "problem", "resolution", "prevention", "feat",
+    "fix", "chore", "add", "added", "update", "updated", "create", "created", "initial",
+    "overview", "handover",
+}
+
+
+def _clean_subject_text(text: str) -> str:
+    s = re.sub(r"\((?:e\.g\.?|for example)[^)]*\)", "", text, flags=re.IGNORECASE)
+    s = re.sub(r"^Git Commit [0-9a-fA-F]+\s*(?:by [^:]+ on [^:]+)?:\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\[Changed files:.*?\]", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^Chat \([^)]+\):\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^Task [A-Za-z0-9_-]+\s*\[[^\]]+\]:\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\(Assignee:.*?Due:.*?\)", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\(Assignee:.*?\)", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^(?:feat|fix|chore|docs|refactor|todo|fixme|action item)[:\s-]*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^\d+\.\s*", "", s)
+    return s.strip()
+
+
+def _subject_tokens(text: str) -> Set[str]:
+    clean = _clean_subject_text(text)
+    words = re.findall(r"[a-zA-Z0-9_-]{3,}", clean.lower())
+    return {w for w in words if w not in EXTENDED_STOPWORDS}
+
+
+def _extract_task_id(text: str, record_id: Optional[str] = None) -> Optional[str]:
+    if record_id and re.match(r"^(?:TASK|ISSUE|BUG|FEAT|T)[-_]?\d+$", record_id, re.IGNORECASE):
+        return record_id.upper()
+    m = re.search(r"\b(TASK-\d+|ISSUE-\d+|BUG-\d+|FEAT-\d+)\b", text, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    m2 = re.search(r"\b(?:Task|Issue|Bug)\s*#?(\d+)\b", text, re.IGNORECASE)
+    if m2:
+        return f"TASK-{m2.group(1)}"
+    return None
+
+
+def _extract_git_hash(text: str, record_id: Optional[str] = None) -> Optional[str]:
+    if record_id and re.match(r"^[0-9a-fA-F]{6,40}$", record_id):
+        return record_id.lower()
+    m = re.search(r"\bGit Commit ([0-9a-fA-F]{6,40})\b", text, re.IGNORECASE)
+    if m:
+        return m.group(1).lower()
+    return None
+
+
+def _extract_status_sentiment(text: str, claim_type: models.ClaimType) -> str:
+    clean = _clean_subject_text(text).lower()
+    raw = text.lower()
+    # Completed indicators
+    if (
+        re.search(
+            r"\b(completed|finished|shipped|deployed|resolved|verified in staging|implemented|working|merged|passed|done)\b",
+            clean,
+        )
+        or re.search(r"\[(?:done|completed|closed|resolved|merged)\]", raw)
+    ):
+        if not re.search(r"\b(not yet|pending|still pending|unimplemented|todo|fixme|open|blocked)\b", clean):
+            return "completed"
+
+    # Pending / in-progress / blocked indicators
+    if (
+        re.search(
+            r"\b(pending|still pending|in progress|not yet|open|wip|todo|fixme|blocked|blocker|needs to be|incomplete)\b",
+            clean,
+        )
+        or re.search(r"\[(?:open|pending|in[ -_]?progress|todo|backlog)\]", raw)
+    ):
+        return "pending"
+
+    if claim_type == models.ClaimType.completed_feature:
+        return "completed"
+    if claim_type in (
+        models.ClaimType.pending_feature,
+        models.ClaimType.todo_fixme,
+        models.ClaimType.blocker_risk,
+    ):
+        return "pending"
+    return "neutral"
+
+
+def _is_problem_solution_pair(text_a: str, text_b: str) -> bool:
+    problem_words = {
+        "hallucination", "hallucinations", "leak", "leaks", "vulnerability", "risk", "risks",
+        "threat", "danger", "dangerous", "unverified", "discrepancy", "discrepancies", "invent", "invents",
+    }
+    solution_words = {
+        "rule", "rules", "mitigate", "mitigates", "safeguard", "safeguards", "prevent", "prevents",
+        "prevention", "strictly", "constrained", "enforce", "enforcement", "assertion", "grounding",
+        "traceability", "isolates", "isolated",
+    }
+    toks_a = set(re.findall(r"[a-z]+", text_a.lower()))
+    toks_b = set(re.findall(r"[a-z]+", text_b.lower()))
+    is_a_prob = bool(toks_a & problem_words)
+    is_b_prob = bool(toks_b & problem_words)
+    is_a_sol = bool(toks_a & solution_words)
+    is_b_sol = bool(toks_b & solution_words)
+    return (is_a_prob and is_b_sol) or (is_b_prob and is_a_sol)
 
 
 def _detect_conflicts(db: Session) -> int:
-    """Detect potential contradictions and insufficient evidence flags across stored claims."""
+    """
+    Detect potential contradictions, review warnings, and insufficient evidence flags across stored claims.
+    Re-evaluates unresolved flags to eliminate false positives while preserving human-resolved flags.
+    """
     claims = db.query(models.Claim).all()
-    existing_flags = db.query(models.ConflictFlag).all()
-
+    resolved_flags = (
+        db.query(models.ConflictFlag)
+        .filter(models.ConflictFlag.resolved == True)  # noqa: E712
+        .all()
+    )
     existing_pairs: Set[Tuple[int, Optional[int], str]] = set()
-    for flag in existing_flags:
+    for flag in resolved_flags:
         if flag.claim_b_id is not None:
-            pair = (min(flag.claim_a_id, flag.claim_b_id), max(flag.claim_a_id, flag.claim_b_id), flag.conflict_type)
+            existing_pairs.add(
+                (min(flag.claim_a_id, flag.claim_b_id), max(flag.claim_a_id, flag.claim_b_id), flag.conflict_type)
+            )
         else:
-            pair = (flag.claim_a_id, None, flag.conflict_type)
-        existing_pairs.add(pair)
+            existing_pairs.add((flag.claim_a_id, None, flag.conflict_type))
+
+    # Clear unresolved flags so fresh, accurate analysis replaces obsolete false-positives
+    db.query(models.ConflictFlag).filter(models.ConflictFlag.resolved == False).delete()  # noqa: E712
 
     new_flags = 0
 
@@ -200,83 +319,138 @@ def _detect_conflicts(db: Session) -> int:
                             f"Claim from '{claim.source_filename}' has brief or ambiguous wording "
                             f"and requires human verification of supporting context."
                         ),
+                        resolved=False,
                     )
                 )
                 existing_pairs.add(key)
                 new_flags += 1
 
-    # 2. Completed vs Pending/Blocker contradictions on overlapping topics
-    completed_claims = [c for c in claims if c.claim_type == models.ClaimType.completed_feature]
-    pending_or_blocked = [
-        c
-        for c in claims
-        if c.claim_type in (models.ClaimType.pending_feature, models.ClaimType.blocker_risk, models.ClaimType.todo_fixme)
-    ]
+    # Pre-extract metadata for all claims
+    claim_meta: Dict[int, dict] = {}
+    for c in claims:
+        first_cit = c.citations[0] if c.citations else None
+        chunk = first_cit.evidence_chunk if first_cit else None
+        rec_id = getattr(chunk, "record_id", None) if chunk else None
+        tid = _extract_task_id(c.claim_text, rec_id)
+        ghash = _extract_git_hash(c.claim_text, rec_id)
+        tokens = _subject_tokens(c.claim_text)
+        sentiment = _extract_status_sentiment(c.claim_text, c.claim_type)
+        claim_meta[c.id] = {
+            "task_id": tid,
+            "git_hash": ghash,
+            "tokens": tokens,
+            "sentiment": sentiment,
+            "source_type": getattr(chunk, "source_type", "document") if chunk else "document",
+        }
 
-    for comp in completed_claims:
-        comp_tokens = _topic_tokens(comp.claim_text)
-        if not comp_tokens:
-            continue
-        for pend in pending_or_blocked:
-            if comp.id == pend.id:
+    # 2. Pairwise contradiction / review warning analysis
+    n = len(claims)
+    for i in range(n):
+        for j in range(i + 1, n):
+            c_a = claims[i]
+            c_b = claims[j]
+            meta_a = claim_meta[c_a.id]
+            meta_b = claim_meta[c_b.id]
+
+            # Rule A: Different task IDs MUST NOT be flagged as contradictions
+            tid_a = meta_a["task_id"]
+            tid_b = meta_b["task_id"]
+            if tid_a and tid_b:
+                if tid_a != tid_b:
+                    continue  # Different tasks naturally have independent statuses
+                # Same task ID: check for status contradiction
+                st_a = meta_a["sentiment"]
+                st_b = meta_b["sentiment"]
+                if (st_a == "completed" and st_b == "pending") or (st_a == "pending" and st_b == "completed"):
+                    pair = (min(c_a.id, c_b.id), max(c_a.id, c_b.id), "contradiction")
+                    if pair not in existing_pairs:
+                        db.add(
+                            models.ConflictFlag(
+                                claim_a_id=c_a.id,
+                                claim_b_id=c_b.id,
+                                conflict_type="contradiction",
+                                description=(
+                                    f"Direct status contradiction on task {tid_a}: "
+                                    f"'{c_a.source_filename}' reports {st_a} while "
+                                    f"'{c_b.source_filename}' reports {st_b}."
+                                ),
+                                resolved=False,
+                            )
+                        )
+                        existing_pairs.add(pair)
+                        new_flags += 1
+                # If statuses match or are compatible, it's agreement (no conflict)
                 continue
-            pend_tokens = _topic_tokens(pend.claim_text)
-            overlap = comp_tokens & pend_tokens
-            if len(overlap) >= 2:
-                pair = (min(comp.id, pend.id), max(comp.id, pend.id), "contradiction")
-                if pair not in existing_pairs:
-                    shared_str = ", ".join(sorted(overlap)[:5])
-                    db.add(
-                        models.ConflictFlag(
-                            claim_a_id=comp.id,
-                            claim_b_id=pend.id,
-                            conflict_type="contradiction",
-                            description=(
-                                f"Potential status contradiction on topic ({shared_str}): "
-                                f"'{comp.source_filename}' indicates completion while "
-                                f"'{pend.source_filename}' indicates pending/blocked work."
-                            ),
-                        )
-                    )
-                    existing_pairs.add(pair)
-                    new_flags += 1
 
-    # 3. Competing technology / architecture choices
-    tech_claims = [
-        c
-        for c in claims
-        if c.claim_type in (models.ClaimType.architecture_decision, models.ClaimType.technology, models.ClaimType.project_decision)
-    ]
-    for group_name, group_terms in COMPETING_TECH_GROUPS:
-        matched_by_term: Dict[str, List[models.Claim]] = {}
-        for claim in tech_claims:
-            tokens = set(re.findall(r"[a-z0-9]+", claim.claim_text.lower()))
-            for term in group_terms:
-                if term in tokens:
-                    matched_by_term.setdefault(term, []).append(claim)
-        if len(matched_by_term) >= 2:
-            terms_sorted = sorted(matched_by_term.keys())
-            first_term = terms_sorted[0]
-            for other_term in terms_sorted[1:]:
-                c_a = matched_by_term[first_term][0]
-                c_b = matched_by_term[other_term][0]
-                if c_a.id == c_b.id:
+            # Rule B: Different Git commits are distinct changesets unless referencing the same task
+            ghash_a = meta_a["git_hash"]
+            ghash_b = meta_b["git_hash"]
+            if ghash_a and ghash_b:
+                if ghash_a != ghash_b:
+                    continue  # Distinct commits; unrelated TODOs/commits do not conflict
+
+            # Rule C: Problem statement vs Solution safeguard
+            if _is_problem_solution_pair(c_a.claim_text, c_b.claim_text):
+                continue
+
+            # Rule D: Corroborating statements from the same file (e.g. Uncertainty Matrix architecture)
+            if c_a.source_file_id == c_b.source_file_id:
+                raw_a = c_a.claim_text.lower()
+                raw_b = c_b.claim_text.lower()
+                if "uncertainty" in raw_a and "uncertainty" in raw_b:
                     continue
-                pair = (min(c_a.id, c_b.id), max(c_a.id, c_b.id), "contradiction")
-                if pair not in existing_pairs:
-                    db.add(
-                        models.ConflictFlag(
-                            claim_a_id=c_a.id,
-                            claim_b_id=c_b.id,
-                            conflict_type="contradiction",
-                            description=(
-                                f"Potential {group_name} conflict: '{c_a.source_filename}' references "
-                                f"'{first_term}' while '{c_b.source_filename}' references '{other_term}'."
-                            ),
+
+            # Rule E: Topic overlap and status compatibility check
+            toks_a = meta_a["tokens"]
+            toks_b = meta_b["tokens"]
+            overlap = toks_a & toks_b
+            if not overlap:
+                continue
+
+            st_a = meta_a["sentiment"]
+            st_b = meta_b["sentiment"]
+
+            # Agreement: Two sources reporting the same pending status do NOT conflict
+            if (st_a == "pending" and st_b == "pending") or (st_a == "completed" and st_b == "completed"):
+                continue
+
+            # Check for genuine status incompatibility (one completed, one pending/blocked)
+            if (st_a == "completed" and st_b == "pending") or (st_a == "pending" and st_b == "completed"):
+                union_len = len(toks_a | toks_b)
+                jaccard = len(overlap) / union_len if union_len > 0 else 0.0
+
+                if len(overlap) >= 2 and jaccard >= 0.25:
+                    shared_str = ", ".join(sorted(overlap)[:5])
+                    # High confidence: confirmed contradiction
+                    if (len(overlap) >= 3 and jaccard >= 0.35) or (len(overlap) >= 2 and jaccard >= 0.4):
+                        c_type = "contradiction"
+                        desc = (
+                            f"Potential status contradiction on topic ({shared_str}): "
+                            f"'{c_a.source_filename}' indicates completion while "
+                            f"'{c_b.source_filename}' indicates pending/blocked work."
                         )
-                    )
-                    existing_pairs.add(pair)
-                    new_flags += 1
+                    else:
+                        # Moderate ambiguity: flag as a review warning rather than declaring a confirmed contradiction
+                        c_type = "review_warning"
+                        desc = (
+                            f"Review warning: Potential status divergence on topic ({shared_str}): "
+                            f"'{c_a.source_filename}' indicates {st_a} while "
+                            f"'{c_b.source_filename}' indicates {st_b}. Human review recommended."
+                        )
+
+                    pair = (min(c_a.id, c_b.id), max(c_a.id, c_b.id), c_type)
+                    if pair not in existing_pairs:
+                        db.add(
+                            models.ConflictFlag(
+                                claim_a_id=c_a.id,
+                                claim_b_id=c_b.id,
+                                conflict_type=c_type,
+                                description=desc,
+                                resolved=False,
+                            )
+                        )
+                        existing_pairs.add(pair)
+                        new_flags += 1
 
     db.commit()
     return new_flags
