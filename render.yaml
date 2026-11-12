@@ -1,26 +1,22 @@
 services:
-  # 1. FastAPI Backend + Persistent Disk for SQLite, Uploads, and Reports
+  # 1. FastAPI Backend - Free instance
   - type: web
     name: cognitrace-backend
     runtime: python
     rootDir: backend
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    disk:
-      name: cognitrace-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: SQLITE_DB_PATH
-        value: sqlite:////data/cognitrace.db
+        value: sqlite:///./cognitrace.db
       - key: UPLOAD_DIR
-        value: /data/uploads
+        value: uploads
       - key: REPORTS_DIR
-        value: /data/reports
+        value: reports
       - key: MAX_UPLOAD_SIZE_MB
         value: "20"
       - key: ALLOWED_TYPES
@@ -30,7 +26,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
 
-  # 2. React + Vite Static Site with SPA Rewrite Routing
+  # 2. React + Vite Static Site - Free
   - type: web
     name: cognitrace-frontend
     runtime: static
