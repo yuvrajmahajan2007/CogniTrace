@@ -300,6 +300,12 @@ def _build_structured_sections(
                     "Two source statements appear to conflict on implementation or technical state. "
                     "Human review is required to confirm which statement reflects current reality."
                 )
+            elif flag.conflict_type == "review_warning":
+                label = "Review Warning"
+                explanation = (
+                    "Two source statements exhibit potential status divergence or partial topic overlap. "
+                    "Human review is recommended to verify whether these describe distinct work items."
+                )
             else:
                 label = "Insufficient Supporting Evidence"
                 explanation = (
