@@ -297,6 +297,8 @@ export default function ClaimVerification() {
                   <span className="font-semibold uppercase tracking-wider text-[11px] text-amber-800">
                     {flag.conflict_type === 'contradiction'
                       ? 'Potential Contradiction'
+                      : flag.conflict_type === 'review_warning'
+                      ? 'Review Warning'
                       : 'Insufficient Supporting Evidence'}
                   </span>
                 </div>
