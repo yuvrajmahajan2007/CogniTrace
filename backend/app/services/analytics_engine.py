@@ -410,7 +410,14 @@ def get_conflict_analytics(db: Session) -> Dict[str, Any]:
         return {
             "total_conflicts": 0,
             "unresolved_conflicts": 0,
+            "resolved_conflicts": 0,
+            "by_resolution_status": [
+                {"status": "unresolved", "count": 0},
+                {"status": "resolved", "count": 0},
+            ],
             "by_conflict_type": [],
+            "unresolved_by_type": [],
+            "resolved_by_type": [],
             "by_document": [],
             "flags": [],
             "summary": "Zero unresolved conflicts or evidence warnings detected.",
