@@ -57,3 +57,10 @@ def init_db():
             "record_timestamp": "VARCHAR",
         },
     )
+
+
+# Automatically initialize DB tables upon import
+try:
+    init_db()
+except Exception:
+    pass
