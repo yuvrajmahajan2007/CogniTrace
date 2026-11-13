@@ -48,6 +48,8 @@ INTENT_APPROVED_CLAIMS = "approved_claims"
 INTENT_TASK_COMPARISON = "task_comparison"
 INTENT_TASK_LISTING = "task_listing"
 INTENT_CHAT_SUMMARY = "chat_summary"
+INTENT_EMPTY_DATABASE = "empty_database"
+INTENT_SYSTEM_INFO = "system_info"
 
 # Common English stopwords to ignore during keyword extraction
 STOPWORDS = {
@@ -1438,6 +1440,94 @@ def ask_assistant(
 
     # 1. Detect Intent
     intent, intent_meta = detect_intent(query)
+
+    # 1b. Check if user is asking general questions about CogniTrace
+    q_lower = query.strip().lower()
+    general_cognitrace_keywords = [
+        "what is cognitrace", "who are you", "what can you do", "how does cognitrace work",
+        "how do i use", "how to use cognitrace", "what is this platform", "about cognitrace",
+        "help me understand cognitrace", "explain cognitrace", "features of cognitrace"
+    ]
+    is_general_cognitrace_query = any(k in q_lower for k in general_cognitrace_keywords)
+
+    if is_general_cognitrace_query:
+        return {
+            "answer": (
+                "### About CogniTrace\n\n"
+                "**CogniTrace** is an evidence-grounded project knowledge handover assistant designed to ensure "
+                "seamless engineering handovers and verifiable technical documentation.\n\n"
+                "#### Core Capabilities:\n"
+                "- **Evidence-Grounded Intelligence:** Operates under the strict **\"No Citation, No Assertion\"** principle, "
+                "guaranteeing that project facts, statuses, and names are never hallucinated or assumed.\n"
+                "- **Multi-Source Ingestion:** Ingests specifications (PDF/DOCX/TXT), sprint tasks (CSV), Git commit activity (JSON), "
+                "and team communications (TXT/JSON).\n"
+                "- **Cross-Source Contradiction Detection:** Flags discrepancies between project documentation, task trackers, "
+                "and chat discussions for human verification.\n"
+                "- **Dynamic Analytics & Visualizations:** Generates real-time charts for task completion velocity, priority distribution, "
+                "and Git commit frequency.\n"
+                "- **Verified Handover Reports:** Compiles human-reviewed claims into audit-ready handover reports.\n\n"
+                "To begin analyzing your project, upload project documents or imports via the **Upload Documents** page."
+            ),
+            "intent": INTENT_SYSTEM_INFO,
+            "citations": [],
+            "chart_spec": None,
+            "analytics_payload": None,
+            "follow_up_suggestions": [
+                "What documents can I upload?",
+                "How does contradiction detection work?",
+                "What is the No Citation, No Assertion principle?"
+            ]
+        }
+
+    # 1c. Empty Database Guard for Project-Specific Queries:
+    # If the user asks for a project overview/status or specific project deliverable
+    # but the database contains zero uploaded files, return an informative guidance response.
+    total_files = db.query(UploadedFile).count()
+    total_chunks = db.query(EvidenceChunk).count()
+
+    if total_files == 0 and total_chunks == 0:
+        # Check if query is asking for project overview or specific project state
+        if intent in [
+            INTENT_PROJECT_OVERVIEW,
+            INTENT_TASK_ANALYTICS,
+            INTENT_GIT_ANALYTICS,
+            INTENT_CLAIMS_REVIEW,
+            INTENT_EVIDENCE_SOURCES,
+            INTENT_CONFLICTS_UNRESOLVED,
+            INTENT_PROJECT_TIMELINE,
+            INTENT_APPROVED_CLAIMS,
+            INTENT_TASK_COMPARISON,
+            INTENT_TASK_LISTING,
+            INTENT_CHAT_SUMMARY
+        ]:
+            return {
+                "answer": (
+                    "I don't have any project documents or evidence to analyse yet.\n\n"
+                    "Please upload your project documents, task records, Git activity, or team conversations first.\n\n"
+                    "Once your data is processed, I can help you understand:\n"
+                    "- **Overall project status** and progress summaries\n"
+                    "- **Completed and pending tasks** with assignees and priorities\n"
+                    "- **Project architecture** and technology stack\n"
+                    "- **Important decisions** and milestone timelines\n"
+                    "- **Blockers, risks, and contradictions** across sources\n"
+                    "- **Team activity** and responsibilities\n\n"
+                    "Under our *No Citation, No Assertion* policy, I will only provide project-specific answers supported by uploaded evidence."
+                ),
+                "intent": INTENT_EMPTY_DATABASE,
+                "citations": [],
+                "chart_spec": None,
+                "analytics_payload": {
+                    "total_files": 0,
+                    "total_chunks": 0,
+                    "total_claims": 0,
+                    "empty": True
+                },
+                "follow_up_suggestions": [
+                    "What is CogniTrace?",
+                    "What documents can I upload?",
+                    "How does the No Citation, No Assertion policy work?"
+                ]
+            }
 
     # 2. Generate Base Grounded Response (Deterministic & Analytics-Backed)
     base_response = synthesize_deterministic_response(db, query, intent, intent_meta)
