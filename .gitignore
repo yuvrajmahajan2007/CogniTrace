@@ -21,7 +21,7 @@ build/
 # Logs
 *.log
 
-# Databases & runtime storage
+# Databases & runtime storage (never commit production or local SQLite/uploads/reports)
 *.db
 *.sqlite
 *.sqlite3
