@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { checkHealth } from './api/client';
 import Layout from './components/Layout';
@@ -9,10 +9,16 @@ import ClaimVerification from './pages/ClaimVerification';
 import HandoverReports from './pages/HandoverReports';
 import Settings from './pages/Settings';
 
+const AiAssistant = lazy(() => import('./pages/AiAssistant'));
+
 const PAGE_META = {
   '/': {
     title: 'Dashboard',
     subtitle: 'Project handover intelligence overview',
+  },
+  '/assistant': {
+    title: 'CogniTrace AI Assistant',
+    subtitle: 'Conversational project analysis & dynamic visualization',
   },
   '/upload': {
     title: 'Upload Documents',
@@ -79,6 +85,25 @@ function AppShell() {
     >
       <Routes>
         <Route path="/" element={<DashboardOverview />} />
+        <Route
+          path="/assistant"
+          element={
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-64 text-slate-500 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                    <span className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                    <span className="w-2 h-2 bg-accent rounded-full animate-bounce"></span>
+                    <span>Loading CogniTrace AI Assistant...</span>
+                  </div>
+                </div>
+              }
+            >
+              <AiAssistant />
+            </Suspense>
+          }
+        />
         <Route path="/upload" element={<UploadDocuments />} />
         <Route path="/evidence" element={<EvidenceExplorer />} />
         <Route path="/claims" element={<ClaimVerification />} />
