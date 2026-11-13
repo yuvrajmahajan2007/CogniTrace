@@ -9,11 +9,13 @@ import {
   Settings,
   Layers,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { API_BASE_URL } from '../api/client';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/assistant', label: 'AI Assistant', icon: Sparkles },
   { to: '/upload', label: 'Upload Documents', icon: UploadCloud },
   { to: '/evidence', label: 'Evidence Explorer', icon: Search },
   { to: '/claims', label: 'Claim Verification', icon: CheckSquare },
