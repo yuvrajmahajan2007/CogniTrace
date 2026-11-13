@@ -1,0 +1,4 @@
+task_id,title,description,status,assignee,priority,due_date
+TASK-101,Implement JWT authentication,Add JWT middleware and token verification on API endpoints,Completed,Priya Sharma,High,2026-11-10
+TASK-102,Create PostgreSQL migration script,Prepare schema migration scripts and verify SQLite compatibility,Pending,Rohan Verma,Critical,2026-11-15
+TASK-103,Test production deployment,Verify health check and SPA routing on Render hosting,In Progress,Amit Patil,Medium,2026-11-20

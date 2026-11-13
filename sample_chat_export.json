@@ -1,0 +1,20 @@
+[
+  {
+    "id": "msg-101",
+    "speaker": "Priya Sharma",
+    "timestamp": "2026-11-10 14:45:00",
+    "message": "JWT authentication middleware has been implemented and tested successfully."
+  },
+  {
+    "id": "msg-102",
+    "speaker": "Rohan Verma",
+    "timestamp": "2026-11-11 09:30:00",
+    "message": "The PostgreSQL migration script is still pending."
+  },
+  {
+    "id": "msg-103",
+    "speaker": "Amit Patil",
+    "timestamp": "2026-11-11 10:00:00",
+    "message": "We decided to complete database migration before production deployment."
+  }
+]
