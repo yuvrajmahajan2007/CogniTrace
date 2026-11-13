@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from .api import files, claims, reports, imports
+from .api import files, claims, reports, imports, chat
 from .core.config import settings
 from .db import init_db
 
@@ -25,6 +25,7 @@ app.include_router(files.router, prefix="/api/files", tags=["files"])
 app.include_router(claims.router, prefix="/api/claims", tags=["claims"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 @app.get("/health", tags=["health"])
 async def health_check():
